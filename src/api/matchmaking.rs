@@ -151,9 +151,10 @@ pub mod matchmaking {
         pub fn get_chat_entry(&self, chat_id: i32) -> Buffer {
             let client = crate::client::get_client();
             let mut buffer = vec![0u8; LOBBY_CHAT_MSG_MAX];
-            let bytes = client
-                .matchmaking()
-                .get_lobby_chat_entry(self.lobby_id, chat_id, &mut buffer);
+            let bytes =
+                client
+                    .matchmaking()
+                    .get_lobby_chat_entry(self.lobby_id, chat_id, &mut buffer);
             bytes.to_vec().into()
         }
     }
