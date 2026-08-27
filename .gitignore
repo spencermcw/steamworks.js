@@ -1,5 +1,5 @@
 /target
-/dist
+# /dist is committed: the CI-built addons ship with the git dependency (see README)
 node_modules
 test/**/package-lock.json
 test/electron/steamworks.js-electron-test-*
