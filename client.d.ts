@@ -57,7 +57,10 @@ export declare namespace callback {
     P2PSessionConnectFail = 7,
     GameLobbyJoinRequested = 8,
     MicroTxnAuthorizationResponse = 9,
-    LobbyChatMsg = 10
+    /** Appended last so the numbering of the callbacks above never moves. */
+    LobbyChatMsg = 10,
+    SteamInventoryDefinitionUpdate = 11,
+    SteamInventoryFullUpdate = 12
   }
   export function register<C extends keyof import('./callbacks').CallbackReturns>(steamCallback: C, handler: (value: import('./callbacks').CallbackReturns[C]) => void): Handle
   export class Handle {
@@ -113,6 +116,67 @@ export declare namespace input {
     getType(): InputType
     getHandle(): bigint
   }
+}
+export declare namespace inventory {
+  export interface InventoryItem {
+    /** The instance id of the item stack. */
+    itemId: bigint
+    /** The item definition id. */
+    definition: number
+    quantity: number
+    /** `ESteamItemFlags` bits: 1 no-trade, 256 removed, 512 consumed. */
+    flags: number
+  }
+  export interface InventoryResult {
+    /** Server time the result was generated, unix seconds. */
+    timestamp: number
+    items: Array<InventoryItem>
+  }
+  export interface DefinitionQuantity {
+    definition: number
+    quantity: number
+  }
+  export interface InstanceQuantity {
+    itemId: bigint
+    quantity: number
+  }
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetAllItems} */
+  export function getAllItems(): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetItemsByID} */
+  export function getItemsById(itemIds: Array<bigint>): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#ConsumeItem} */
+  export function consumeItem(itemId: bigint, quantity: number): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#ExchangeItems} */
+  export function exchangeItems(generate: Array<DefinitionQuantity>, destroy: Array<InstanceQuantity>): Promise<InventoryResult>
+  /** Developer-only. {@link https://partner.steamgames.com/doc/api/ISteamInventory#GenerateItems} */
+  export function generateItems(items: Array<DefinitionQuantity>): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#TransferItemQuantity} */
+  export function transferItemQuantity(source: bigint, quantity: number, dest?: bigint | undefined | null): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#TriggerItemDrop} */
+  export function triggerItemDrop(definition: number): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GrantPromoItems} */
+  export function grantPromoItems(): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#AddPromoItems} */
+  export function addPromoItems(definitions: Array<number>): Promise<InventoryResult>
+  /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#SendItemDropHeartbeat} */
+  export function sendItemDropHeartbeat(): void
+  /**
+   * Starts loading the item definitions; the `SteamInventoryDefinitionUpdate`
+   * callback fires when they are available.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#LoadItemDefinitions}
+   */
+  export function loadItemDefinitions(): boolean
+  /**
+   * The ids of every loaded item definition, or `null` before they load.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetItemDefinitionIDs}
+   */
+  export function getItemDefinitionIds(): Array<number> | null
+  /**
+   * A property of a loaded definition; with no name, the comma-separated
+   * property names.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetItemDefinitionProperty}
+   */
+  export function getItemDefinitionProperty(definition: number, name?: string | undefined | null): string | null
 }
 export declare namespace localplayer {
   export function getSteamId(): PlayerSteamId
@@ -351,6 +415,7 @@ export declare namespace workshop {
    * @returns an array of subscribed workshop item ids
    */
   export function getSubscribedItems(): Array<bigint>
+  export function deleteItem(itemId: bigint): Promise<void>
   export const enum UGCQueryType {
     RankedByVote = 0,
     RankedByPublicationDate = 1,
