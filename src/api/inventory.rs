@@ -8,8 +8,10 @@ use napi_derive::napi;
 /// branch on it.
 #[napi]
 pub mod inventory {
-    use napi::bindgen_prelude::{BigInt, Error};
-    use steamworks::{InventoryResult as SteamInventoryResult, ItemDefId, ItemInstanceId};
+    use napi::bindgen_prelude::{BigInt, Buffer, Error};
+    use steamworks::{
+        InventoryResult as SteamInventoryResult, ItemDefId, ItemInstanceId, SteamError, SteamId,
+    };
     use tokio::sync::oneshot;
 
     #[napi(object)]
@@ -30,6 +32,30 @@ pub mod inventory {
         pub items: Vec<InventoryItem>,
     }
 
+    /// A result signed by Steam, for another player to verify.
+    #[napi(object)]
+    pub struct SerializedResult {
+        /// Server time the result was generated, unix seconds.
+        pub timestamp: u32,
+        pub items: Vec<InventoryItem>,
+        /// The signed bytes to hand to another player's `deserializeResult`.
+        pub buffer: Buffer,
+    }
+
+    /// Another player's serialized result, verified by Steam.
+    #[napi(object)]
+    pub struct VerifiedResult {
+        /// Server time the result was generated, unix seconds.
+        pub timestamp: u32,
+        pub items: Vec<InventoryItem>,
+        /// The signature verified, but the set is over an hour old
+        /// (`k_EResultExpired`): an item in it may since have been traded or consumed.
+        pub expired: bool,
+        /// `CheckResultSteamID` against the id the caller named. False means
+        /// the sender handed over somebody else's inventory.
+        pub belongs_to: bool,
+    }
+
     #[napi(object)]
     pub struct DefinitionQuantity {
         pub definition: i32,
@@ -46,33 +72,30 @@ pub mod inventory {
         ItemInstanceId(id.get_u64().1)
     }
 
-    fn finish(
-        result: Result<SteamInventoryResult, steamworks::SteamError>,
-    ) -> Result<InventoryResult, Error> {
-        match result {
-            Ok(result) => Ok(InventoryResult {
-                timestamp: result.timestamp(),
-                items: result
-                    .items()
-                    .into_iter()
-                    .map(|item| InventoryItem {
-                        item_id: BigInt::from(item.item_id.0),
-                        definition: item.definition.0,
-                        quantity: item.quantity as u32,
-                        flags: item.flags.0 as u32,
-                    })
-                    .collect(),
-            }),
-            Err(e) => Err(Error::from_reason(format!("{:?}", e))),
-        }
+    fn items_of(result: &SteamInventoryResult) -> Vec<InventoryItem> {
+        result
+            .items()
+            .into_iter()
+            .map(|item| InventoryItem {
+                item_id: BigInt::from(item.item_id.0),
+                definition: item.definition.0,
+                quantity: item.quantity as u32,
+                flags: item.flags.0 as u32,
+            })
+            .collect()
     }
 
-    async fn request(
+    fn reason(e: SteamError) -> Error {
+        Error::from_reason(format!("{:?}", e))
+    }
+
+    /// Issues one request and waits for the finished result, handle and all.
+    async fn raw(
         submit: impl FnOnce(
             steamworks::Inventory,
-            Box<dyn FnOnce(Result<SteamInventoryResult, steamworks::SteamError>) + Send>,
+            Box<dyn FnOnce(Result<SteamInventoryResult, SteamError>) + Send>,
         ),
-    ) -> Result<InventoryResult, Error> {
+    ) -> Result<SteamInventoryResult, Error> {
         let client = crate::client::get_client();
         let (tx, rx) = oneshot::channel();
         submit(
@@ -81,10 +104,22 @@ pub mod inventory {
                 let _ = tx.send(result);
             }),
         );
-        finish(
-            rx.await
-                .map_err(|_| Error::from_reason("inventory request dropped"))?,
-        )
+        rx.await
+            .map_err(|_| Error::from_reason("inventory request dropped"))?
+            .map_err(reason)
+    }
+
+    async fn request(
+        submit: impl FnOnce(
+            steamworks::Inventory,
+            Box<dyn FnOnce(Result<SteamInventoryResult, SteamError>) + Send>,
+        ),
+    ) -> Result<InventoryResult, Error> {
+        let result = raw(submit).await?;
+        Ok(InventoryResult {
+            timestamp: result.timestamp(),
+            items: items_of(&result),
+        })
     }
 
     /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetAllItems}
@@ -98,6 +133,45 @@ pub mod inventory {
     pub async fn get_items_by_id(item_ids: Vec<BigInt>) -> Result<InventoryResult, Error> {
         let ids: Vec<ItemInstanceId> = item_ids.iter().map(instance).collect();
         request(move |inv, cb| inv.get_items_by_id(&ids, cb)).await
+    }
+
+    /// `GetItemsByID` on the local user's items, then `SerializeResult`: a
+    /// minimal signed set another player can verify with `deserializeResult`.
+    /// It expires an hour after `timestamp`.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+    #[napi]
+    pub async fn serialize_items_by_id(item_ids: Vec<BigInt>) -> Result<SerializedResult, Error> {
+        let ids: Vec<ItemInstanceId> = item_ids.iter().map(instance).collect();
+        let result = raw(move |inv, cb| inv.get_items_by_id(&ids, cb)).await?;
+        let buffer = result
+            .serialize()
+            .ok_or_else(|| Error::from_reason("SerializeResult failed"))?;
+        Ok(SerializedResult {
+            timestamp: result.timestamp(),
+            items: items_of(&result),
+            buffer: buffer.into(),
+        })
+    }
+
+    /// `DeserializeResult` on bytes another player serialized, then
+    /// `CheckResultSteamID` against the player who sent them. Rejects with the
+    /// `EResult` name when the signature does not verify; an expired set
+    /// resolves with `expired: true`.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#DeserializeResult}
+    #[napi]
+    pub async fn deserialize_result(
+        buffer: Buffer,
+        steam_id64: BigInt,
+    ) -> Result<VerifiedResult, Error> {
+        let bytes: Vec<u8> = buffer.to_vec();
+        let sender = SteamId::from_raw(steam_id64.get_u64().1);
+        let result = raw(move |inv, cb| inv.deserialize_result(&bytes, cb)).await?;
+        Ok(VerifiedResult {
+            timestamp: result.timestamp(),
+            items: items_of(&result),
+            expired: matches!(result.status(), Err(SteamError::Expired)),
+            belongs_to: result.check_steam_id(sender),
+        })
     }
 
     /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#ConsumeItem}

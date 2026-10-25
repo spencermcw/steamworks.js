@@ -250,7 +250,7 @@ dependencies = [
 [[package]]
 name = "steamworks"
 version = "0.13.1"
-source = "git+https://github.com/spencermcw/steamworks-rs/?rev=01b7c6a7e1fb4b25abc966aadff43be39a1e9190#01b7c6a7e1fb4b25abc966aadff43be39a1e9190"
+source = "git+https://github.com/spencermcw/steamworks-rs/?rev=f7a97683c23e610d37b4f8159f54793be37b3e92#f7a97683c23e610d37b4f8159f54793be37b3e92"
 dependencies = [
  "bitflags",
  "pastey",
@@ -262,7 +262,7 @@ dependencies = [
 [[package]]
 name = "steamworks-sys"
 version = "0.13.0"
-source = "git+https://github.com/spencermcw/steamworks-rs/?rev=01b7c6a7e1fb4b25abc966aadff43be39a1e9190#01b7c6a7e1fb4b25abc966aadff43be39a1e9190"
+source = "git+https://github.com/spencermcw/steamworks-rs/?rev=f7a97683c23e610d37b4f8159f54793be37b3e92#f7a97683c23e610d37b4f8159f54793be37b3e92"
 
 [[package]]
 name = "steamworksjs"

@@ -81,6 +81,32 @@ export declare namespace cloud {
     size: bigint
   }
 }
+export declare namespace friends {
+  export interface Persona {
+    name: string
+    /**
+     * `offline`, `online`, `invisible`, `busy`, `away`, `snooze`,
+     * `lookingToTrade` or `lookingToPlay`.
+     */
+    state: string
+    /**
+     * The 64x64 avatar as RGBA bytes, or `null` while Steam has not
+     * delivered it yet (a `PersonaStateChange` follows when it does).
+     */
+    mediumAvatar?: Buffer
+  }
+  /**
+   * What Steam holds for a user: their name, state and avatar.
+   * {@link https://partner.steamgames.com/doc/api/ISteamFriends#GetFriendPersonaName}
+   */
+  export function getPersona(steamId64: bigint): Persona
+  /**
+   * Asks Steam for a user's persona. True when it is being fetched and a
+   * `PersonaStateChange` will follow; false when it is already held.
+   * {@link https://partner.steamgames.com/doc/api/ISteamFriends#RequestUserInformation}
+   */
+  export function requestUserInformation(steamId64: bigint, nameOnly: boolean): boolean
+}
 export declare namespace input {
   export const enum InputType {
     Unknown = 'Unknown',
@@ -132,6 +158,30 @@ export declare namespace inventory {
     timestamp: number
     items: Array<InventoryItem>
   }
+  /** A result signed by Steam, for another player to verify. */
+  export interface SerializedResult {
+    /** Server time the result was generated, unix seconds. */
+    timestamp: number
+    items: Array<InventoryItem>
+    /** The signed bytes to hand to another player's `deserializeResult`. */
+    buffer: Buffer
+  }
+  /** Another player's serialized result, verified by Steam. */
+  export interface VerifiedResult {
+    /** Server time the result was generated, unix seconds. */
+    timestamp: number
+    items: Array<InventoryItem>
+    /**
+     * The signature verified, but the set is over an hour old
+     * (`k_EResultExpired`): an item in it may since have been traded or consumed.
+     */
+    expired: boolean
+    /**
+     * `CheckResultSteamID` against the id the caller named. False means
+     * the sender handed over somebody else's inventory.
+     */
+    belongsTo: boolean
+  }
   export interface DefinitionQuantity {
     definition: number
     quantity: number
@@ -144,6 +194,21 @@ export declare namespace inventory {
   export function getAllItems(): Promise<InventoryResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetItemsByID} */
   export function getItemsById(itemIds: Array<bigint>): Promise<InventoryResult>
+  /**
+   * `GetItemsByID` on the local user's items, then `SerializeResult`: a
+   * minimal signed set another player can verify with `deserializeResult`.
+   * It expires an hour after `timestamp`.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+   */
+  export function serializeItemsById(itemIds: Array<bigint>): Promise<SerializedResult>
+  /**
+   * `DeserializeResult` on bytes another player serialized, then
+   * `CheckResultSteamID` against the player who sent them. Rejects with the
+   * `EResult` name when the signature does not verify; an expired set
+   * resolves with `expired: true`.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#DeserializeResult}
+   */
+  export function deserializeResult(buffer: Buffer, steamId64: bigint): Promise<VerifiedResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#ConsumeItem} */
   export function consumeItem(itemId: bigint, quantity: number): Promise<InventoryResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#ExchangeItems} */
