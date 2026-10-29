@@ -9,6 +9,7 @@ use napi_derive::napi;
 #[napi]
 pub mod inventory {
     use napi::bindgen_prelude::{BigInt, Buffer, Error};
+    use std::collections::HashMap;
     use steamworks::{
         InventoryResult as SteamInventoryResult, ItemDefId, ItemInstanceId, SteamError, SteamId,
     };
@@ -68,6 +69,20 @@ pub mod inventory {
         pub quantity: u32,
     }
 
+    /// One item of a result with every dynamic property Steam reports for it.
+    #[napi(object)]
+    pub struct ItemProperties {
+        /// The instance id of the item stack.
+        pub item_id: BigInt,
+        /// The item definition id.
+        pub definition: i32,
+        /// `SteamItemDetails_t.m_unQuantity`, a uint16: a stack past 65,535 reads wrapped.
+        pub quantity: u32,
+        /// Every property `GetResultItemProperty` names for the item (a null
+        /// name lists them), each with its value.
+        pub properties: HashMap<String, String>,
+    }
+
     fn instance(id: &BigInt) -> ItemInstanceId {
         ItemInstanceId(id.get_u64().1)
     }
@@ -122,6 +137,34 @@ pub mod inventory {
         })
     }
 
+    fn properties_of(result: &SteamInventoryResult) -> Vec<ItemProperties> {
+        result
+            .items()
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let index = index as u32;
+                let properties = result
+                    .item_property(index, None)
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(|name| {
+                        let value = result.item_property(index, Some(name)).unwrap_or_default();
+                        (name.to_string(), value)
+                    })
+                    .collect();
+                ItemProperties {
+                    item_id: BigInt::from(item.item_id.0),
+                    definition: item.definition.0,
+                    quantity: item.quantity as u32,
+                    properties,
+                }
+            })
+            .collect()
+    }
+
     /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetAllItems}
     #[napi]
     pub async fn get_all_items() -> Result<InventoryResult, Error> {
@@ -133,6 +176,24 @@ pub mod inventory {
     pub async fn get_items_by_id(item_ids: Vec<BigInt>) -> Result<InventoryResult, Error> {
         let ids: Vec<ItemInstanceId> = item_ids.iter().map(instance).collect();
         request(move |inv, cb| inv.get_items_by_id(&ids, cb)).await
+    }
+
+    /// `GetItemsByID`, then `GetResultItemProperty` on each item: first with a
+    /// null name for the comma-separated property names, then each name's value.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetResultItemProperty}
+    #[napi]
+    pub async fn get_item_properties(item_ids: Vec<BigInt>) -> Result<Vec<ItemProperties>, Error> {
+        let ids: Vec<ItemInstanceId> = item_ids.iter().map(instance).collect();
+        let result = raw(move |inv, cb| inv.get_items_by_id(&ids, cb)).await?;
+        Ok(properties_of(&result))
+    }
+
+    /// `GetAllItems`, then every item's properties as `getItemProperties` reads them.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetResultItemProperty}
+    #[napi]
+    pub async fn get_all_item_properties() -> Result<Vec<ItemProperties>, Error> {
+        let result = raw(|inv, cb| inv.get_all_items(cb)).await?;
+        Ok(properties_of(&result))
     }
 
     /// `GetItemsByID` on the local user's items, then `SerializeResult`: a

@@ -190,10 +190,35 @@ export declare namespace inventory {
     itemId: bigint
     quantity: number
   }
+  /** One item of a result with every dynamic property Steam reports for it. */
+  export interface ItemProperties {
+    /** The instance id of the item stack. */
+    itemId: bigint
+    /** The item definition id. */
+    definition: number
+    /** `SteamItemDetails_t.m_unQuantity`, a uint16: a stack past 65,535 reads wrapped. */
+    quantity: number
+    /**
+     * Every property `GetResultItemProperty` names for the item (a null
+     * name lists them), each with its value.
+     */
+    properties: Record<string, string>
+  }
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetAllItems} */
   export function getAllItems(): Promise<InventoryResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetItemsByID} */
   export function getItemsById(itemIds: Array<bigint>): Promise<InventoryResult>
+  /**
+   * `GetItemsByID`, then `GetResultItemProperty` on each item: first with a
+   * null name for the comma-separated property names, then each name's value.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetResultItemProperty}
+   */
+  export function getItemProperties(itemIds: Array<bigint>): Promise<Array<ItemProperties>>
+  /**
+   * `GetAllItems`, then every item's properties as `getItemProperties` reads them.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#GetResultItemProperty}
+   */
+  export function getAllItemProperties(): Promise<Array<ItemProperties>>
   /**
    * `GetItemsByID` on the local user's items, then `SerializeResult`: a
    * minimal signed set another player can verify with `deserializeResult`.
