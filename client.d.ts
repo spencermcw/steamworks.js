@@ -181,6 +181,12 @@ export declare namespace inventory {
      * the sender handed over somebody else's inventory.
      */
     belongsTo: boolean
+    /**
+     * Every item of the verified set with its `GetResultItemProperty`
+     * properties, as `getItemProperties` reads them: the `quantity`
+     * property is the stack's true size past the uint16 read in `items`.
+     */
+    properties: Array<ItemProperties>
   }
   export interface DefinitionQuantity {
     definition: number
@@ -228,7 +234,8 @@ export declare namespace inventory {
   export function serializeItemsById(itemIds: Array<bigint>): Promise<SerializedResult>
   /**
    * `DeserializeResult` on bytes another player serialized, then
-   * `CheckResultSteamID` against the player who sent them. Rejects with the
+   * `CheckResultSteamID` against the player who sent them, and each item's
+   * `GetResultItemProperty` properties. Rejects with the
    * `EResult` name when the signature does not verify; an expired set
    * resolves with `expired: true`.
    * {@link https://partner.steamgames.com/doc/api/ISteamInventory#DeserializeResult}

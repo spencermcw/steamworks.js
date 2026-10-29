@@ -55,6 +55,10 @@ pub mod inventory {
         /// `CheckResultSteamID` against the id the caller named. False means
         /// the sender handed over somebody else's inventory.
         pub belongs_to: bool,
+        /// Every item of the verified set with its `GetResultItemProperty`
+        /// properties, as `getItemProperties` reads them: the `quantity`
+        /// property is the stack's true size past the uint16 read in `items`.
+        pub properties: Vec<ItemProperties>,
     }
 
     #[napi(object)]
@@ -215,7 +219,8 @@ pub mod inventory {
     }
 
     /// `DeserializeResult` on bytes another player serialized, then
-    /// `CheckResultSteamID` against the player who sent them. Rejects with the
+    /// `CheckResultSteamID` against the player who sent them, and each item's
+    /// `GetResultItemProperty` properties. Rejects with the
     /// `EResult` name when the signature does not verify; an expired set
     /// resolves with `expired: true`.
     /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#DeserializeResult}
@@ -232,6 +237,7 @@ pub mod inventory {
             items: items_of(&result),
             expired: matches!(result.status(), Err(SteamError::Expired)),
             belongs_to: result.check_steam_id(sender),
+            properties: properties_of(&result),
         })
     }
 
