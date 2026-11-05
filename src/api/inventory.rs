@@ -265,6 +265,49 @@ pub mod inventory {
         request(move |inv, cb| inv.exchange_items(&generate, &destroy, cb)).await
     }
 
+    fn signed(result: SteamInventoryResult) -> Result<SerializedResult, Error> {
+        let buffer = result
+            .serialize()
+            .ok_or_else(|| Error::from_reason("SerializeResult failed"))?;
+        Ok(SerializedResult {
+            timestamp: result.timestamp(),
+            items: items_of(&result),
+            buffer: buffer.into(),
+        })
+    }
+
+    /// `ConsumeItem`, then `SerializeResult` on that request's own result: a
+    /// proof of the spend another player can verify with `deserializeResult`,
+    /// with no `GetItemsByID` read between the write and the signature.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+    #[napi]
+    pub async fn consume_item_serialized(
+        item_id: BigInt,
+        quantity: u32,
+    ) -> Result<SerializedResult, Error> {
+        let id = instance(&item_id);
+        signed(raw(move |inv, cb| inv.consume_item(id, quantity, cb)).await?)
+    }
+
+    /// `ExchangeItems`, then `SerializeResult` on that request's own result:
+    /// what the exchange spent and made, signed, as `consumeItemSerialized`.
+    /// {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+    #[napi]
+    pub async fn exchange_items_serialized(
+        generate: Vec<DefinitionQuantity>,
+        destroy: Vec<InstanceQuantity>,
+    ) -> Result<SerializedResult, Error> {
+        let generate: Vec<(ItemDefId, u32)> = generate
+            .iter()
+            .map(|g| (ItemDefId(g.definition), g.quantity))
+            .collect();
+        let destroy: Vec<(ItemInstanceId, u32)> = destroy
+            .iter()
+            .map(|d| (instance(&d.item_id), d.quantity))
+            .collect();
+        signed(raw(move |inv, cb| inv.exchange_items(&generate, &destroy, cb)).await?)
+    }
+
     /// Developer-only. {@link https://partner.steamgames.com/doc/api/ISteamInventory#GenerateItems}
     #[napi]
     pub async fn generate_items(items: Vec<DefinitionQuantity>) -> Result<InventoryResult, Error> {

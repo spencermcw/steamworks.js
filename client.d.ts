@@ -245,6 +245,19 @@ export declare namespace inventory {
   export function consumeItem(itemId: bigint, quantity: number): Promise<InventoryResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#ExchangeItems} */
   export function exchangeItems(generate: Array<DefinitionQuantity>, destroy: Array<InstanceQuantity>): Promise<InventoryResult>
+  /**
+   * `ConsumeItem`, then `SerializeResult` on that request's own result: a
+   * proof of the spend another player can verify with `deserializeResult`,
+   * with no `GetItemsByID` read between the write and the signature.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+   */
+  export function consumeItemSerialized(itemId: bigint, quantity: number): Promise<SerializedResult>
+  /**
+   * `ExchangeItems`, then `SerializeResult` on that request's own result:
+   * what the exchange spent and made, signed, as `consumeItemSerialized`.
+   * {@link https://partner.steamgames.com/doc/api/ISteamInventory#SerializeResult}
+   */
+  export function exchangeItemsSerialized(generate: Array<DefinitionQuantity>, destroy: Array<InstanceQuantity>): Promise<SerializedResult>
   /** Developer-only. {@link https://partner.steamgames.com/doc/api/ISteamInventory#GenerateItems} */
   export function generateItems(items: Array<DefinitionQuantity>): Promise<InventoryResult>
   /** {@link https://partner.steamgames.com/doc/api/ISteamInventory#TransferItemQuantity} */
